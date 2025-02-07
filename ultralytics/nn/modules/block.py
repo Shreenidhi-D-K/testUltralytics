@@ -783,12 +783,12 @@ class C3k2(C2f):
 class DwPwCSP(nn.Module):
     def __init__(self,c1,c2,n=1,c3k=False, e=0.5, g=1, shortcut=True):
         super().__init__()
-        self.c3k2 = C3k2(c1, c2, n=n, c3k, e=e, g=g, shortcut=shortcut)
+        self.c3k2 = C3k2(c1, c2, n=n, c3k=c3k, e=e, g=g, shortcut=shortcut)
         self.dwcsp = DwCSP(c1, c2)
         self.cv1 = Conv(2*c2, c2,k=1)
 
     def forward(self, x):
-        return cv1(torch.cat((c3k2(x),dwcsp(x)),1))
+        return self.cv1(torch.cat((self.c3k2(x),self.dwcsp(x)),1))
 
 """-------------------------------------------------------------------------------------"""
 
