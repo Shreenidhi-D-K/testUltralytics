@@ -41,6 +41,9 @@ __all__ = (
     "CBFuse",
     "CBLinear",
     "C3k2",
+    "DwBottleneck",
+    "DwCSP",
+    "DwPwCSP",
     "C2fPSA",
     "C2PSA",
     "RepVGGDW",
@@ -245,7 +248,32 @@ class C2f(nn.Module):
         y = [y[0], y[1]]
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
+        
+"""-------------------------------------------------------------------------------------"""
+class DwCSP(nn.Module):
+    """Faster Implementation of DW CSP Bottleneck with 2 convolutions."""
 
+    def __init__(self, c1, c2, n=1, shortcut=False, g=1, e=0.5):
+        """Initializes a CSP bottleneck with 2 convolutions and n Bottleneck blocks for faster processing."""
+        super().__init__()
+        self.c = int(c2 * e)  # hidden channels
+        self.cv1 = DWConv(c1, 2 * self.c, 1, 1)
+        self.cv2 = DWConv((2 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
+        self.m = nn.ModuleList(DwBottleneck(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n))
+
+    def forward(self, x):
+        """Forward pass through C2f layer."""
+        y = list(self.cv1(x).chunk(2, 1))
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
+
+    def forward_split(self, x):
+        """Forward pass using split() instead of chunk()."""
+        y = self.cv1(x).split((self.c, self.c), 1)
+        y = [y[0], y[1]]
+        y.extend(m(y[-1]) for m in self.m)
+        return self.cv2(torch.cat(y, 1))
+"""-------------------------------------------------------------------------------------"""
 
 class C3(nn.Module):
     """CSP Bottleneck with 3 convolutions."""
@@ -347,6 +375,23 @@ class Bottleneck(nn.Module):
         """Applies the YOLO FPN to input data."""
         return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
 
+"""-------------------------------------------------------------------------------------"""
+
+class DwBottleneck(nn.Module):
+    """Standard bottleneck."""
+
+    def __init__(self, c1, c2, shortcut=True, g=1, k=(3, 3), e=0.5):
+        """Initializes a standard bottleneck module with optional shortcut connection and configurable parameters."""
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = DWConv(c1, c_, k=k[0], s=1)
+        self.cv2 = DWConv(c_, c2, k=k[1], s=1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """Applies the YOLO FPN to input data."""
+        return x + self.cv2(self.cv1(x)) if self.add else self.cv2(self.cv1(x))
+"""-------------------------------------------------------------------------------------"""
 
 class BottleneckCSP(nn.Module):
     """CSP Bottleneck https://github.com/WongKinYiu/CrossStagePartialNetworks."""
@@ -722,6 +767,8 @@ class C3f(nn.Module):
         return self.cv3(torch.cat(y, 1))
 
 
+
+
 class C3k2(C2f):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
 
@@ -732,6 +779,18 @@ class C3k2(C2f):
             C3k(self.c, self.c, 2, shortcut, g) if c3k else Bottleneck(self.c, self.c, shortcut, g) for _ in range(n)
         )
 
+"""-------------------------------------------------------------------------------------"""
+class DwPwCSP(nn.Module):
+    def __init__(self,c1,c2,n=1,c3k=False, e=0.5, g=1, shortcut=True):
+        super()__init__()
+        self.c3k2 = C3k2(c1, c2, n=n, c3k, e=e, g=g, shortcut=shortcut)
+        self.dwcsp = DwCSP(c1, c2)
+        self.cv1 = Conv(2*c2, c2,k=1)
+
+    def forward(self, x):
+        return cv1(torch.cat((c3k2(x),dwcsp(x)),1))
+
+"""-------------------------------------------------------------------------------------"""
 
 class C3k(C3):
     """C3k is a CSP bottleneck module with customizable kernel sizes for feature extraction in neural networks."""
